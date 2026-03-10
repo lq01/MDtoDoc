@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MD → Google Docs Converter</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
+  <style>
+    :root {
+      --bg: #0e0e10;
+      --surface: #17171a;
+      --surface2: #1f1f24;
+      --border: #2a2a30;
+      --accent: #c8a96e;
+      --accent2: #e8c98a;
+      --text: #e8e4dc;
+      --text-dim: #8a8680;
+      --text-muted: #4a4844;
+      --success: #5a9e6f;
+      --danger: #c46060;
+      --mono: 'JetBrains Mono', monospace;
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Merriweather', serif;
+      font-size: 13px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* HEADER */
+    header {
+      padding: 20px 32px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      width: 32px;
+      height: 32px;
+      background: var(--accent);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      color: #0e0e10;
+    }
+
+    .logo-text {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--text-dim);
+      letter-spacing: 0.05em;
+    }
+
+    .logo-text span {
+      color: var(--accent);
+    }
+
+    .header-meta {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      letter-spacing: 0.08em;
+    }
+
+    /* TOOLBAR */
+    .toolbar {
+      padding: 12px 32px;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      flex-shrink: 0;
+    }
+
+    .btn {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      padding: 7px 14px;
+      border-radius: 4px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #0e0e10;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent2);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary:active {
+      transform: translateY(0);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+    }
+
+    .btn-ghost:hover {
+      color: var(--text);
+      border-color: var(--text-muted);
+    }
+
+    .btn-copy {
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+    }
+
+    .btn-copy:hover {
+      background: rgba(200, 169, 110, 0.12);
+    }
+
+    .btn-copy.copied {
+      background: rgba(90, 158, 111, 0.15);
+      color: var(--success);
+      border-color: var(--success);
+    }
+
+    .btn-danger {
+      background: transparent;
+      color: var(--danger);
+      border: 1px solid var(--danger);
+      opacity: 0.7;
+    }
+
+    .btn-danger:hover {
+      opacity: 1;
+    }
+
+    .toolbar-sep {
+      width: 1px;
+      height: 20px;
+      background: var(--border);
+    }
+
+    .status-badge {
+      font-family: var(--mono);
+      font-size: 10px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      letter-spacing: 0.06em;
+      margin-left: auto;
+    }
+
+    .status-idle {
+      background: var(--surface);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+
+    .status-ok {
+      background: rgba(90, 158, 111, 0.15);
+      color: var(--success);
+      border: 1px solid var(--success);
+    }
+
+    .status-err {
+      background: rgba(196, 96, 96, 0.15);
+      color: var(--danger);
+      border: 1px solid var(--danger);
+    }
+
+    /* MAIN LAYOUT */
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .panel {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .panel+.panel {
+      border-left: 1px solid var(--border);
+    }
+
+    .panel-header {
+      padding: 10px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .panel-counter {
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    /* EDITOR */
+    #editor {
+      flex: 1;
+      background: var(--bg);
+      color: var(--text);
+      border: none;
+      outline: none;
+      resize: none;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.8;
+      padding: 24px;
+      tab-size: 2;
+      overflow-y: auto;
+    }
+
+    #editor::placeholder {
+      color: var(--text-muted);
+    }
+
+    /* PREVIEW */
+    #preview {
+      flex: 1;
+      overflow-y: auto;
+      padding: 32px 36px;
+      background: #fafafa;
+      color: #434343;
+      font-family: 'Merriweather', serif;
+      font-size: 10pt;
+      line-height: 1.7;
+    }
+
+    /* Preview styles matching the spec */
+    #preview h1 {
+      font-size: 24pt;
+      color: #000;
+      font-weight: 400;
+      margin-bottom: 16px;
+      line-height: 1.2;
+    }
+
+    #preview h2 {
+      font-size: 12pt;
+      color: #000;
+      font-weight: 400;
+      margin-top: 24px;
+      margin-bottom: 8px;
+      line-height: 1.3;
+    }
+
+    #preview h3 {
+      font-size: 11pt;
+      color: #000;
+      font-weight: 400;
+      margin-top: 18px;
+      margin-bottom: 6px;
+      line-height: 1.3;
+    }
+
+    #preview h4 {
+      font-size: 10pt;
+      color: #000;
+      font-weight: 400;
+      margin-top: 14px;
+      margin-bottom: 4px;
+    }
+
+    #preview p {
+      font-size: 10pt;
+      color: #434343;
+      margin-bottom: 10px;
+      line-height: 1.7;
+    }
+
+    /* Level 5: Bold inline at paragraph start */
+    #preview p strong:first-child {
+      color: #000;
+      font-weight: 700;
+    }
+
+    #preview blockquote {
+      border-left: 3px solid #d0d0d0;
+      padding-left: 16px;
+      margin: 12px 0;
+      font-size: 10pt;
+      color: #666;
+      font-style: italic;
+    }
+
+    #preview hr {
+      border: none;
+      border-top: 1px solid #000;
+      margin: 18px 0;
+    }
+
+    #preview table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 20px 0;
+      font-size: 8pt;
+      color: #434343;
+    }
+
+    #preview th {
+      background: #efefef;
+      border: 1px solid #cccccc;
+      padding: 6px 10px;
+      text-align: left;
+      font-weight: 400;
+    }
+
+    #preview td {
+      border: 1px solid #cccccc;
+      padding: 6px 10px;
+      text-align: left;
+    }
+
+    #preview code {
+      font-family: var(--mono);
+      font-size: 11px;
+      background: #eeeeee;
+      padding: 1px 4px;
+      border-radius: 2px;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 3px;
+    }
+
+    #preview::-webkit-scrollbar-thumb {
+      background: #cccccc;
+    }
+
+    /* TOAST */
+    .toast {
+      position: fixed;
+      bottom: 28px;
+      right: 28px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 12px 18px;
+      border-radius: 6px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      transform: translateY(80px);
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      z-index: 999;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      max-width: 320px;
+    }
+
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    .toast.success {
+      border-color: var(--success);
+    }
+
+    .toast.error {
+      border-color: var(--danger);
+    }
+
+    /* LEGEND */
+    .legend {
+      padding: 12px 32px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <div class="logo">
+      <div class="logo-icon">◈</div>
+      <span class="logo-text"><span>MD</span> → Google Docs</span>
+    </div>
+    <span class="header-meta">PADRÃO MERRIWEATHER · v1.0</span>
+  </header>
+
+  <div class="toolbar">
+    <button class="btn btn-primary" onclick="exportDocx()">
+      ⬇ Exportar .docx
+    </button>
+    <button class="btn btn-copy" id="btn-copy" onclick="copyForDocs()">
+      ⎘ Copiar para Docs
+    </button>
+    <div class="toolbar-sep"></div>
+    <button class="btn btn-ghost" onclick="loadExample()">✦ Exemplo</button>
+    <button class="btn btn-ghost" onclick="clearEditor()">↺ Limpar</button>
+    <div class="toolbar-sep"></div>
+    <span id="status" class="status-badge status-idle">AGUARDANDO</span>
+  </div>
+
+  <main>
+    <div class="panel">
+      <div class="panel-header">
+        <span>✎ ENTRADA MARKDOWN</span>
+        <span class="panel-counter" id="char-count">0 chars</span>
+      </div>
+      <textarea id="editor" spellcheck="false" placeholder="Cole seu markdown aqui...
+
+# Título do Documento
+---
+## 1. Seção Principal
+### 1.1 Subseção
+#### 1.1.1 Subsubseção
+
+**Tópico em Destaque.** Texto explicativo inline seguindo o Nível 6.
+
+> Nota de observação em itálico — Nível 7."></textarea>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <span>◉ PREVIEW (PADRÃO VISUAL)</span>
+        <span class="panel-counter" id="elem-count">—</span>
+      </div>
+      <div id="preview"></div>
+    </div>
+  </main>
+
+  <div class="legend">
+    <span style="color: var(--accent); margin-right:4px;">NÍVEIS:</span>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#000"></div><span>N1 Título 24pt</span>
+    </div>
+    <div class="legend-dot" style="background:#333; border-radius:0; width:1px; height:12px;"></div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#222"></div><span>N2 Seção 12pt</span>
+    </div>
+    <div class="legend-dot" style="background:#333; border-radius:0; width:1px; height:12px;"></div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#444"></div><span>N3 Subseção 11pt</span>
+    </div>
+    <div class="legend-dot" style="background:#333; border-radius:0; width:1px; height:12px;"></div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#555"></div><span>N4 Subsubseção 10pt</span>
+    </div>
+    <div class="legend-dot" style="background:#333; border-radius:0; width:1px; height:12px;"></div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#888; border: 2px solid #fff"></div><span>N5 Destaque bold</span>
+    </div>
+    <div class="legend-dot" style="background:#333; border-radius:0; width:1px; height:12px;"></div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#777"></div><span>N6 Corpo 434343</span>
+    </div>
+    <div class="legend-dot" style="background:#333; border-radius:0; width:1px; height:12px;"></div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#aaa"></div><span>N7 Nota itálico 666666</span>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // ─── CONSTANTS ────────────────────────────────────────────────────────────────
+    const FONT = 'Merriweather';
+
+    // Tamanhos em half-points (docx usa half-points)
+    const SZ = { n1: 48, n2: 24, n3: 22, n4: 20, n5: 20, n6: 20, n7: 20, table: 16 };
+
+    // Cores hexadecimais (sem #)
+    const C = {
+      black: '000000',
+      darkGray4: '434343',
+      darkGray3: '666666',
+      lightGray1: 'CCCCCC',
+      lightGray2: 'EFEFEF',
+      white: 'FFFFFF',
+    };
+
+    // Espaçamento (twips = 1/20 pt)
+    const SPACING = {
+      afterH1: { after: 240 },
+      afterH2: { before: 320, after: 120 },
+      afterH3: { before: 240, after: 80 },
+      afterH4: { before: 200, after: 60 },
+      afterPara: { after: 140 },
+      afterNote: { after: 140 },
+    };
+
+    // ─── MARKDOWN PARSER ─────────────────────────────────────────────────────────
+    function parseMarkdown(md) {
+      const lines = md.split('\n');
+      const tokens = [];
+      let i = 0;
+
+      while (i < lines.length) {
+        const line = lines[i];
+
+        // Table detection
+        if (i + 1 < lines.length && lines[i + 1].match(/^\|[-: |]+\|$/)) {
+          const tableLines = [];
+          while (i < lines.length && lines[i].trim().startsWith('|')) {
+            tableLines.push(lines[i]);
+            i++;
+          }
+          tokens.push({ type: 'table', raw: tableLines });
+          continue;
+        }
+
+        // HR / section divider
+        if (line.match(/^(-{3,}|_{3,}|\*{3,}|─{3,})$/)) {
+          tokens.push({ type: 'hr' });
+          i++; continue;
+        }
+
+        // Headings
+        const hm = line.match(/^(#{1,6})\s+(.+)$/);
+        if (hm) {
+          tokens.push({ type: 'heading', level: hm[1].length, text: hm[2].trim() });
+          i++; continue;
+        }
+
+        // Blockquote
+        if (line.startsWith('>')) {
+          let bq = '';
+          while (i < lines.length && lines[i].startsWith('>')) {
+            bq += (bq ? ' ' : '') + lines[i].replace(/^>\s?/, '');
+            i++;
+          }
+          tokens.push({ type: 'blockquote', text: bq });
+          continue;
+        }
+
+        // Fenced code block (skip)
+        if (line.startsWith('```')) {
+          i++;
+          while (i < lines.length && !lines[i].startsWith('```')) i++;
+          i++; continue;
+        }
+
+        // Empty line
+        if (line.trim() === '') { i++; continue; }
+
+        // Paragraph
+        tokens.push({ type: 'para', text: line.trim() });
+        i++;
+      }
+
+      return tokens;
+    }
+
+    // ─── INLINE PARSER ───────────────────────────────────────────────────────────
+    // Returns array of { text, bold, italic, code }
+    function parseInline(text) {
+      const runs = [];
+      const regex = /(\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|__(.+?)__|_(.+?)_|\*(.+?)\*|`(.+?)`)/g;
+      let last = 0;
+      let m;
+
+      while ((m = regex.exec(text)) !== null) {
+        if (m.index > last) {
+          runs.push({ text: text.slice(last, m.index), bold: false, italic: false });
+        }
+        if (m[2]) runs.push({ text: m[2], bold: true, italic: true });
+        else if (m[3]) runs.push({ text: m[3], bold: true, italic: false });
+        else if (m[4]) runs.push({ text: m[4], bold: true, italic: false });
+        else if (m[5]) runs.push({ text: m[5], bold: false, italic: true });
+        else if (m[6]) runs.push({ text: m[6], bold: false, italic: true });
+        else if (m[7]) runs.push({ text: m[7], bold: false, italic: false, code: true });
+        last = m.index + m[0].length;
+      }
+
+      if (last < text.length) {
+        runs.push({ text: text.slice(last), bold: false, italic: false });
+      }
+
+      return runs.length ? runs : [{ text, bold: false, italic: false }];
+    }
+
+    // ─── DOCX BUILDERS ───────────────────────────────────────────────────────────
+    function makeRun(run, overrides = {}) {
+      const { docx } = window;
+      return new docx.TextRun({
+        text: run.text,
+        bold: run.bold || overrides.bold || false,
+        italics: run.italic || overrides.italic || false,
+        font: { name: FONT },
+        size: overrides.size || SZ.n6,
+        color: overrides.color || C.darkGray4,
+      });
+    }
+
+    function makeHeading(token) {
+      const { docx } = window;
+      const level = token.level;
+
+      const configs = {
+        1: { size: SZ.n1, color: C.black, spacing: SPACING.afterH1 },
+        2: { size: SZ.n2, color: C.black, spacing: SPACING.afterH2 },
+        3: { size: SZ.n3, color: C.black, spacing: SPACING.afterH3 },
+        4: { size: SZ.n4, color: C.black, spacing: SPACING.afterH4 },
+      };
+
+      const cfg = configs[Math.min(level, 4)];
+      const runs = parseInline(token.text);
+
+      return new docx.Paragraph({
+        children: runs.map(r => makeRun(r, { size: cfg.size, color: cfg.color })),
+        spacing: cfg.spacing,
+      });
+    }
+
+    function makeParagraph(token) {
+      const { docx } = window;
+      const runs = parseInline(token.text);
+
+      // Detectar Nível 5: primeiro run é bold e termina com ponto
+      const isLevel5 = runs.length > 0 && runs[0].bold;
+
+      const children = runs.map((r, idx) => {
+        if (isLevel5 && idx === 0) {
+          // Nível 5: bold, preto
+          return makeRun(r, { size: SZ.n5, color: C.black, bold: true });
+        }
+        // Nível 6: normal, cinza-escuro 4
+        return makeRun(r, { size: SZ.n6, color: C.darkGray4 });
+      });
+
+      return new docx.Paragraph({
+        children,
+        spacing: SPACING.afterPara,
+      });
+    }
+
+    function makeBlockquote(token) {
+      const { docx } = window;
+      const runs = parseInline(token.text);
+
+      return new docx.Paragraph({
+        children: runs.map(r => makeRun(r, {
+          size: SZ.n7, color: C.darkGray3, italic: true,
+        })),
+        spacing: SPACING.afterNote,
+        indent: { left: 480 },
+        border: {
+          left: {
+            color: C.lightGray1,
+            space: 12,
+            style: docx.BorderStyle.SINGLE,
+            size: 12,
+          },
+        },
+      });
+    }
+
+    function makeHR() {
+      const { docx } = window;
+      return new docx.Paragraph({
+        children: [],
+        spacing: { before: 160, after: 160 },
+        border: {
+          bottom: {
+            color: C.black,
+            space: 1,
+            style: docx.BorderStyle.SINGLE,
+            size: 6,
+          },
+        },
+      });
+    }
+
+    function parseTableLines(rawLines) {
+      const rows = [];
+      for (const line of rawLines) {
+        // Skip separator rows
+        if (line.match(/^\|[-: |]+\|$/)) continue;
+        const cells = line.split('|').map(c => c.trim()).filter(c => c !== '');
+        if (cells.length) rows.push(cells);
+      }
+      return rows;
+    }
+
+    function makeTable(token) {
+      const { docx } = window;
+      const rows = parseTableLines(token.raw);
+      if (!rows.length) return null;
+
+      const docxRows = rows.map((row, rowIdx) => {
+        const isHeader = rowIdx === 0;
+        return new docx.TableRow({
+          children: row.map(cellText => {
+            const runs = parseInline(cellText);
+            return new docx.TableCell({
+              children: [
+                new docx.Paragraph({
+                  children: runs.map(r => makeRun(r, {
+                    size: SZ.table,
+                    color: C.darkGray4,
+                  })),
+                  spacing: { before: 40, after: 40 },
+                }),
+              ],
+              shading: isHeader
+                ? { fill: C.lightGray2, type: docx.ShadingType.CLEAR, color: 'auto' }
+                : { fill: C.white, type: docx.ShadingType.CLEAR, color: 'auto' },
+              margins: { top: 80, bottom: 80, left: 120, right: 120 },
+              borders: {
+                top: { style: docx.BorderStyle.SINGLE, size: 4, color: C.lightGray1 },
+                bottom: { style: docx.BorderStyle.SINGLE, size: 4, color: C.lightGray1 },
+                left: { style: docx.BorderStyle.SINGLE, size: 4, color: C.lightGray1 },
+                right: { style: docx.BorderStyle.SINGLE, size: 4, color: C.lightGray1 },
+              },
+            });
+          }),
+        });
+      });
+
+      return new docx.Table({
+        rows: docxRows,
+        width: { size: 9000, type: docx.WidthType.DXA },
+        margins: { top: 60, bottom: 60 },
+      });
+    }
+
+    // ─── COPY FOR DOCS ───────────────────────────────────────────────────────────
+    // Builds a styled HTML blob and copies to clipboard as text/html
+    // Google Docs preserves inline styles on paste
+    async function copyForDocs() {
+      const md = document.getElementById('editor').value.trim();
+      if (!md) { showToast('⚠ Cole algum markdown primeiro.', 'error'); return; }
+
+      const tokens = parseMarkdown(md);
+
+      const styleBlock = `
+    <style>
+      body { font-family: 'Merriweather', serif; font-size: 10pt; color: #434343; }
+      h1 { font-size: 24pt; color: #000; font-weight: 400; margin: 0 0 12px; }
+      h2 { font-size: 12pt; color: #000; font-weight: 400; margin: 20px 0 8px; }
+      h3 { font-size: 11pt; color: #000; font-weight: 400; margin: 16px 0 6px; }
+      h4 { font-size: 10pt; color: #000; font-weight: 400; margin: 12px 0 4px; }
+      p  { font-size: 10pt; color: #434343; margin: 0 0 8px; line-height: 1.7; }
+      p strong:first-child { color: #000; font-weight: 700; }
+      blockquote { font-size: 10pt; color: #666; font-style: italic; margin: 8px 0 8px 24px; padding-left: 12px; border-left: 3px solid #ccc; }
+      hr { border: none; border-top: 1px solid #000; margin: 14px 0; }
+      table { border-collapse: collapse; width: 100%; font-size: 8pt; color: #434343; margin: 10px 0 18px; }
+      th { background: #efefef; border: 1px solid #cccccc; padding: 5px 8px; text-align: left; font-weight: 400; }
+      td { border: 1px solid #cccccc; padding: 5px 8px; text-align: left; }
+    </style>
+  `;
+
+      let body = '';
+      for (const token of tokens) {
+        if (token.type === 'heading') {
+          const lvl = Math.min(token.level, 4);
+          body += `<h${lvl}>${inlineToHtml(token.text)}</h${lvl}>`;
+        } else if (token.type === 'para') {
+          body += `<p>${inlineToHtml(token.text)}</p>`;
+        } else if (token.type === 'blockquote') {
+          body += `<blockquote>${inlineToHtml(token.text)}</blockquote>`;
+        } else if (token.type === 'hr') {
+          body += `<hr>`;
+        } else if (token.type === 'table') {
+          const rows = parseTableLines(token.raw);
+          if (!rows.length) continue;
+          body += '<table>';
+          rows.forEach((row, ri) => {
+            body += ri === 0 ? '<thead><tr>' : (ri === 1 ? '<tbody><tr>' : '<tr>');
+            row.forEach(cell => {
+              const tag = ri === 0 ? 'th' : 'td';
+              body += `<${tag}>${inlineToHtml(cell)}</${tag}>`;
+            });
+            body += ri === 0 ? '</tr></thead>' : '</tr>';
+            if (ri === rows.length - 1 && ri > 0) body += '</tbody>';
+          });
+          body += '</table>';
+        }
+      }
+
+      const html = `<!DOCTYPE html><html><head>${styleBlock}</head><body>${body}</body></html>`;
+
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': new Blob([html], { type: 'text/html' }),
+            'text/plain': new Blob([document.getElementById('editor').value], { type: 'text/plain' }),
+          })
+        ]);
+        const btn = document.getElementById('btn-copy');
+        btn.textContent = '✓ Copiado!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.textContent = '⎘ Copiar para Docs';
+          btn.classList.remove('copied');
+        }, 2500);
+        showToast('✓ Copiado! Cole com Ctrl+V no Google Docs.', 'success');
+      } catch (err) {
+        // Fallback: copy plain text
+        try {
+          await navigator.clipboard.writeText(document.getElementById('editor').value);
+          showToast('⚠ Copiado como texto simples (navegador limitou HTML rico).', '');
+        } catch {
+          showToast('❌ Falha ao copiar. Use Exportar .docx.', 'error');
+        }
+      }
+    }
+
+    // ─── MAIN CONVERTER ──────────────────────────────────────────────────────────
+    async function exportDocx() {
+      const { docx } = window;
+      if (!docx) { showToast('❌ Biblioteca docx não carregada.', 'error'); return; }
+
+      const md = document.getElementById('editor').value.trim();
+      if (!md) { showToast('⚠ Cole algum markdown primeiro.', 'error'); return; }
+
+      setStatus('GERANDO...', 'idle');
+      showToast('⏳ Gerando documento...', '');
+
+      try {
+        const tokens = parseMarkdown(md);
+        const children = [];
+
+        for (const token of tokens) {
+          if (token.type === 'heading') children.push(makeHeading(token));
+          else if (token.type === 'para') children.push(makeParagraph(token));
+          else if (token.type === 'blockquote') children.push(makeBlockquote(token));
+          else if (token.type === 'hr') children.push(makeHR());
+          else if (token.type === 'table') {
+            const tbl = makeTable(token);
+            if (tbl) {
+              children.push(tbl);
+              // Parágrafo espaçador após tabela — evita o "grudado" com o próximo elemento
+              children.push(new docx.Paragraph({
+                children: [],
+                spacing: { before: 0, after: 360 },
+              }));
+            }
+          }
+        }
+
+        if (!children.length) {
+          showToast('⚠ Nenhum conteúdo reconhecido.', 'error');
+          setStatus('ERRO', 'err');
+          return;
+        }
+
+        const doc = new docx.Document({
+          styles: {
+            default: {
+              document: {
+                run: {
+                  font: FONT,
+                  size: SZ.n6,
+                  color: C.darkGray4,
+                },
+              },
+            },
+          },
+          sections: [{
+            properties: {
+              page: {
+                margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 },
+              },
+            },
+            children,
+          }],
+        });
+
+        const rawBlob = await docx.Packer.toBlob(doc);
+        const blob = new Blob([rawBlob], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+        const url = URL.createObjectURL(blob);
+
+        const filename = 'Documento convertido.docx';
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        setStatus('EXPORTADO ✓', 'ok');
+        showToast(`✓ Arquivo "${filename}" gerado com sucesso!`, 'success');
+
+      } catch (err) {
+        console.error(err);
+        setStatus('ERRO', 'err');
+        showToast('❌ Erro ao gerar: ' + err.message, 'error');
+      }
+    }
+
+    // ─── LIVE PREVIEW ────────────────────────────────────────────────────────────
+    function renderPreview(md) {
+      const tokens = parseMarkdown(md);
+      const preview = document.getElementById('preview');
+      let html = '';
+      let elemCount = 0;
+
+      for (const token of tokens) {
+        elemCount++;
+        if (token.type === 'heading') {
+          const lvl = Math.min(token.level, 4);
+          html += `<h${lvl}>${escHtml(token.text)}</h${lvl}>`;
+        } else if (token.type === 'para') {
+          html += `<p>${inlineToHtml(token.text)}</p>`;
+        } else if (token.type === 'blockquote') {
+          html += `<blockquote>${inlineToHtml(token.text)}</blockquote>`;
+        } else if (token.type === 'hr') {
+          html += `<hr>`;
+        } else if (token.type === 'table') {
+          const rows = parseTableLines(token.raw);
+          if (!rows.length) continue;
+          html += '<table>';
+          rows.forEach((row, ri) => {
+            html += ri === 0 ? '<thead><tr>' : (ri === 1 ? '<tbody><tr>' : '<tr>');
+            row.forEach(cell => {
+              const tag = ri === 0 ? 'th' : 'td';
+              html += `<${tag}>${inlineToHtml(cell)}</${tag}>`;
+            });
+            html += ri === 0 ? '</tr></thead>' : '</tr>';
+          });
+          html += '</table>';
+        }
+      }
+
+      preview.innerHTML = html || '<p style="color:#aaa; font-style:italic;">O preview aparecerá aqui…</p>';
+      document.getElementById('elem-count').textContent = elemCount + ' elementos';
+    }
+
+    function inlineToHtml(text) {
+      return text
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/__(.+?)__/g, '<strong>$1</strong>')
+        .replace(/_(.+?)_/g, '<em>$1</em>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/`(.+?)`/g, '<code>$1</code>');
+    }
+
+    function escHtml(t) {
+      return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // ─── UI HELPERS ──────────────────────────────────────────────────────────────
+    let debounceTimer;
+    document.getElementById('editor').addEventListener('input', function () {
+      const val = this.value;
+      document.getElementById('char-count').textContent = val.length.toLocaleString() + ' chars';
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        renderPreview(val);
+        setStatus(val.trim() ? 'PRONTO' : 'AGUARDANDO', val.trim() ? 'ok' : 'idle');
+      }, 250);
+    });
+
+    function setStatus(text, type) {
+      const el = document.getElementById('status');
+      el.textContent = text;
+      el.className = 'status-badge status-' + type;
+    }
+
+    let toastTimer;
+    function showToast(msg, type) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.className = 'toast ' + type + ' show';
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.classList.remove('show'), 3500);
+    }
+
+    function clearEditor() {
+      document.getElementById('editor').value = '';
+      document.getElementById('preview').innerHTML = '<p style="color:#aaa; font-style:italic;">O preview aparecerá aqui…</p>';
+      document.getElementById('char-count').textContent = '0 chars';
+      document.getElementById('elem-count').textContent = '—';
+      setStatus('AGUARDANDO', 'idle');
+    }
+
+    function loadExample() {
+      const example = `# Viability Study — Sistema de Indexação Inteligente
+
+| Propriedade | Valor |
+| :--- | :--- |
+| **Tipo** | Estudo de Viabilidade |
+| **Versão** | 1.0 |
+| **Responsável** | Pesquisa & Arquitetura |
+| **Status** | Em Revisão |
+
+---
+
+## 1. Introdução
+
+Este documento avalia a viabilidade técnica e operacional do sistema de indexação inteligente de arquivos com uso de modelos de linguagem locais.
+
+### 1.1 Escopo do Estudo
+
+O estudo cobre os principais componentes arquiteturais, restrições de hardware e estratégias de fallback para ambientes sem GPU dedicada.
+
+#### 1.1.1 Restrições Técnicas
+
+O sistema deve operar em hardware de médio desempenho sem depender de conectividade de rede.
+
+---
+
+## 2. Análise Técnica
+
+**Processamento local como prioridade.** O sistema utiliza modelos Ollama rodando localmente, garantindo que nenhum arquivo do usuário seja transmitido externamente.
+
+**Pipeline de extração de metadados.** A arquitetura separa a leitura de conteúdo (responsabilidade da aplicação) do processamento semântico (responsabilidade do modelo), evitando acesso direto do LLM ao sistema de arquivos.
+
+> _Nota: modelos abaixo de 1B parâmetros podem apresentar degradação de qualidade em documentos com layout complexo — avaliar SmolVLM2 vs Florence-2 para este caso._
+
+### 2.1 Modelos Avaliados
+
+| Modelo | Parâmetros | VRAM Mínima | Qualidade |
+| :--- | :---: | :---: | :--- |
+| SmolVLM2 | 256M | 1.5 GB | Adequada para imagens simples |
+| Florence-2 | 270M | 2.0 GB | Superior em documentos |
+| Qwen2.5-0.5B | 500M | 2.5 GB | Melhor em texto estruturado |
+
+---
+
+## 3. Conclusão
+
+A abordagem com modelos sub-1B é viável para indexação de imagens e documentos simples. Para documentos complexos, recomenda-se Florence-2 com grammar-constrained decoding para garantir saída JSON válida.`;
+
+      document.getElementById('editor').value = example;
+      document.getElementById('char-count').textContent = example.length.toLocaleString() + ' chars';
+      renderPreview(example);
+      setStatus('PRONTO', 'ok');
+    }
+
+    // Wait for docx to load
+    window.addEventListener('load', () => {
+      if (window.docx) {
+        showToast('✓ Biblioteca docx carregada.', 'success');
+      } else {
+        setStatus('ERRO LIB', 'err');
+        showToast('❌ Falha ao carregar docx.js — verifique a conexão.', 'error');
+      }
+    });
+  </script>
+</body>
+
+</html>
