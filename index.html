@@ -368,6 +368,30 @@
       border-radius: 2px;
     }
 
+    #preview pre {
+      background: #f3f3f3;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      padding: 12px 16px;
+      margin: 10px 0;
+      overflow-x: auto;
+      font-family: var(--mono);
+      font-size: 11px;
+      line-height: 1.6;
+      color: #333;
+    }
+
+    #preview pre code {
+      background: none;
+      padding: 0;
+      border-radius: 0;
+    }
+
+    #preview a {
+      color: #1a73e8;
+      text-decoration: underline;
+    }
+
     /* Scrollbar */
     ::-webkit-scrollbar {
       width: 6px;
@@ -607,11 +631,19 @@
           continue;
         }
 
-        // Fenced code block (skip)
+        // Fenced code block
         if (line.startsWith('```')) {
+          const langMatch = line.match(/^```(\w*)/);
+          const lang = langMatch ? langMatch[1] : '';
           i++;
-          while (i < lines.length && !lines[i].startsWith('```')) i++;
-          i++; continue;
+          const codeLines = [];
+          while (i < lines.length && !lines[i].startsWith('```')) {
+            codeLines.push(lines[i]);
+            i++;
+          }
+          i++; // skip closing ```
+          tokens.push({ type: 'codeblock', lang, text: codeLines.join('\n') });
+          continue;
         }
 
         // Empty line
@@ -626,10 +658,11 @@
     }
 
     // ─── INLINE PARSER ───────────────────────────────────────────────────────────
-    // Returns array of { text, bold, italic, code }
+    // Returns array of { text, bold, italic, code, link }
     function parseInline(text) {
       const runs = [];
-      const regex = /(\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|__(.+?)__|_(.+?)_|\*(.+?)\*|`(.+?)`)/g;
+      // Added link pattern: [text](url)
+      const regex = /(\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|__(.+?)__|_(.+?)_|\*(.+?)\*|`(.+?)`|\[([^\]]+)\]\(([^)]+)\))/g;
       let last = 0;
       let m;
 
@@ -643,6 +676,7 @@
         else if (m[5]) runs.push({ text: m[5], bold: false, italic: true });
         else if (m[6]) runs.push({ text: m[6], bold: false, italic: true });
         else if (m[7]) runs.push({ text: m[7], bold: false, italic: false, code: true });
+        else if (m[8] && m[9]) runs.push({ text: m[8], bold: false, italic: false, link: m[9] });
         last = m.index + m[0].length;
       }
 
@@ -666,6 +700,32 @@
       });
     }
 
+    // Creates a clickable ExternalHyperlink for docx
+    function makeLinkRun(run, overrides = {}) {
+      const { docx } = window;
+      return new docx.ExternalHyperlink({
+        children: [
+          new docx.TextRun({
+            text: run.text,
+            style: 'Hyperlink',
+            font: { name: FONT },
+            size: overrides.size || SZ.n6,
+            color: '1155CC',
+            underline: { type: docx.UnderlineType.SINGLE },
+          }),
+        ],
+        link: run.link,
+      });
+    }
+
+    // Build array of children (TextRun or ExternalHyperlink) from inline runs
+    function makeInlineChildren(runs, overrides = {}) {
+      return runs.map((r, idx) => {
+        if (r.link) return makeLinkRun(r, overrides);
+        return makeRun(r, overrides);
+      });
+    }
+
     function makeHeading(token) {
       const { docx } = window;
       const level = token.level;
@@ -681,7 +741,7 @@
       const runs = parseInline(token.text);
 
       return new docx.Paragraph({
-        children: runs.map(r => makeRun(r, { size: cfg.size, color: cfg.color })),
+        children: makeInlineChildren(runs, { size: cfg.size, color: cfg.color }),
         spacing: cfg.spacing,
       });
     }
@@ -694,6 +754,7 @@
       const isLevel5 = runs.length > 0 && runs[0].bold;
 
       const children = runs.map((r, idx) => {
+        if (r.link) return makeLinkRun(r, { size: SZ.n6 });
         if (isLevel5 && idx === 0) {
           // Nível 5: bold, preto
           return makeRun(r, { size: SZ.n5, color: C.black, bold: true });
@@ -713,9 +774,9 @@
       const runs = parseInline(token.text);
 
       return new docx.Paragraph({
-        children: runs.map(r => makeRun(r, {
+        children: makeInlineChildren(runs, {
           size: SZ.n7, color: C.darkGray3, italic: true,
-        })),
+        }),
         spacing: SPACING.afterNote,
         indent: { left: 480 },
         border: {
@@ -727,6 +788,39 @@
           },
         },
       });
+    }
+
+    function makeCodeBlock(token) {
+      const { docx } = window;
+      const codeLines = token.text.split('\n');
+      const paragraphs = [];
+
+      for (const codeLine of codeLines) {
+        paragraphs.push(new docx.Paragraph({
+          children: [
+            new docx.TextRun({
+              text: codeLine || ' ', // espaço para linhas vazias
+              font: { name: 'JetBrains Mono' },
+              size: 18, // 9pt
+              color: '333333',
+            }),
+          ],
+          spacing: { before: 0, after: 0, line: 276 },
+          shading: {
+            fill: 'F3F3F3',
+            type: docx.ShadingType.CLEAR,
+            color: 'auto',
+          },
+          indent: { left: 240, right: 240 },
+        }));
+      }
+
+      // Parágrafo espaçador antes e depois do bloco de código
+      return [
+        new docx.Paragraph({ children: [], spacing: { before: 80, after: 0 } }),
+        ...paragraphs,
+        new docx.Paragraph({ children: [], spacing: { before: 0, after: 120 } }),
+      ];
     }
 
     function makeHR() {
@@ -769,10 +863,10 @@
             return new docx.TableCell({
               children: [
                 new docx.Paragraph({
-                  children: runs.map(r => makeRun(r, {
+                  children: makeInlineChildren(runs, {
                     size: SZ.table,
                     color: C.darkGray4,
-                  })),
+                  }),
                   spacing: { before: 40, after: 40 },
                 }),
               ],
@@ -821,6 +915,9 @@
       table { border-collapse: collapse; width: 100%; font-size: 8pt; color: #434343; margin: 10px 0 18px; }
       th { background: #efefef; border: 1px solid #cccccc; padding: 5px 8px; text-align: left; font-weight: 400; }
       td { border: 1px solid #cccccc; padding: 5px 8px; text-align: left; }
+      pre { background: #f3f3f3; border: 1px solid #e0e0e0; border-radius: 4px; padding: 10px 14px; margin: 8px 0; font-family: 'JetBrains Mono', monospace; font-size: 9pt; line-height: 1.6; color: #333; white-space: pre-wrap; }
+      pre code { background: none; padding: 0; }
+      a { color: #1a73e8; text-decoration: underline; }
     </style>
   `;
 
@@ -835,6 +932,8 @@
           body += `<blockquote>${inlineToHtml(token.text)}</blockquote>`;
         } else if (token.type === 'hr') {
           body += `<hr>`;
+        } else if (token.type === 'codeblock') {
+          body += `<pre><code>${escHtml(token.text)}</code></pre>`;
         } else if (token.type === 'table') {
           const rows = parseTableLines(token.raw);
           if (!rows.length) continue;
@@ -900,6 +999,10 @@
           else if (token.type === 'para') children.push(makeParagraph(token));
           else if (token.type === 'blockquote') children.push(makeBlockquote(token));
           else if (token.type === 'hr') children.push(makeHR());
+          else if (token.type === 'codeblock') {
+            const codeParas = makeCodeBlock(token);
+            children.push(...codeParas);
+          }
           else if (token.type === 'table') {
             const tbl = makeTable(token);
             if (tbl) {
@@ -977,13 +1080,15 @@
         elemCount++;
         if (token.type === 'heading') {
           const lvl = Math.min(token.level, 4);
-          html += `<h${lvl}>${escHtml(token.text)}</h${lvl}>`;
+          html += `<h${lvl}>${inlineToHtml(token.text)}</h${lvl}>`;
         } else if (token.type === 'para') {
           html += `<p>${inlineToHtml(token.text)}</p>`;
         } else if (token.type === 'blockquote') {
           html += `<blockquote>${inlineToHtml(token.text)}</blockquote>`;
         } else if (token.type === 'hr') {
           html += `<hr>`;
+        } else if (token.type === 'codeblock') {
+          html += `<pre><code>${escHtml(token.text)}</code></pre>`;
         } else if (token.type === 'table') {
           const rows = parseTableLines(token.raw);
           if (!rows.length) continue;
@@ -1012,7 +1117,8 @@
         .replace(/__(.+?)__/g, '<strong>$1</strong>')
         .replace(/_(.+?)_/g, '<em>$1</em>')
         .replace(/\*(.+?)\*/g, '<em>$1</em>')
-        .replace(/`(.+?)`/g, '<code>$1</code>');
+        .replace(/`(.+?)`/g, '<code>$1</code>')
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
     }
 
     function escHtml(t) {
@@ -1055,52 +1161,78 @@
     }
 
     function loadExample() {
-      const example = `# Viability Study — Sistema de Indexação Inteligente
+      const example = `# Documento de Exemplo
 
-| Propriedade | Valor |
+| Campo | Detalhe |
 | :--- | :--- |
-| **Tipo** | Estudo de Viabilidade |
+| **Autor** | Equipe de Testes |
 | **Versão** | 1.0 |
-| **Responsável** | Pesquisa & Arquitetura |
-| **Status** | Em Revisão |
+| **Data** | Março 2026 |
 
 ---
 
 ## 1. Introdução
 
-Este documento avalia a viabilidade técnica e operacional do sistema de indexação inteligente de arquivos com uso de modelos de linguagem locais.
+Este é um documento de demonstração para visualizar como cada elemento do Markdown é convertido para o formato final. Todos os recursos suportados estão exemplificados abaixo.
 
-### 1.1 Escopo do Estudo
+### 1.1 Formatação Inline
 
-O estudo cobre os principais componentes arquiteturais, restrições de hardware e estratégias de fallback para ambientes sem GPU dedicada.
+O conversor suporta **texto em negrito**, _texto em itálico_, e até ***negrito com itálico*** combinados. Trechos de \`código inline\` também são reconhecidos.
 
-#### 1.1.1 Restrições Técnicas
+#### 1.1.1 Links
 
-O sistema deve operar em hardware de médio desempenho sem depender de conectividade de rede.
-
----
-
-## 2. Análise Técnica
-
-**Processamento local como prioridade.** O sistema utiliza modelos Ollama rodando localmente, garantindo que nenhum arquivo do usuário seja transmitido externamente.
-
-**Pipeline de extração de metadados.** A arquitetura separa a leitura de conteúdo (responsabilidade da aplicação) do processamento semântico (responsabilidade do modelo), evitando acesso direto do LLM ao sistema de arquivos.
-
-> _Nota: modelos abaixo de 1B parâmetros podem apresentar degradação de qualidade em documentos com layout complexo — avaliar SmolVLM2 vs Florence-2 para este caso._
-
-### 2.1 Modelos Avaliados
-
-| Modelo | Parâmetros | VRAM Mínima | Qualidade |
-| :--- | :---: | :---: | :--- |
-| SmolVLM2 | 256M | 1.5 GB | Adequada para imagens simples |
-| Florence-2 | 270M | 2.0 GB | Superior em documentos |
-| Qwen2.5-0.5B | 500M | 2.5 GB | Melhor em texto estruturado |
+Links são convertidos em hiperlinks clicáveis: [Documentação Oficial](https://docs.google.com) e [Repositório do Projeto](https://github.com).
 
 ---
 
-## 3. Conclusão
+## 2. Blocos de Código
 
-A abordagem com modelos sub-1B é viável para indexação de imagens e documentos simples. Para documentos complexos, recomenda-se Florence-2 com grammar-constrained decoding para garantir saída JSON válida.`;
+Trechos dentro de cercas de código são preservados com formatação monoespaçada:
+
+\`\`\`python
+def processar_documento(caminho):
+    with open(caminho, 'r') as f:
+        conteudo = f.read()
+    tokens = conteudo.split()
+    return len(tokens)
+
+total = processar_documento("exemplo.md")
+print(f"Total de tokens: {total}")
+\`\`\`
+
+Outro exemplo em JavaScript:
+
+\`\`\`javascript
+const resultado = dados
+  .filter(item => item.ativo)
+  .map(item => item.nome);
+
+console.log(resultado);
+\`\`\`
+
+---
+
+## 3. Citações e Tabelas
+
+> _Nota: blocos de citação são renderizados em itálico com borda lateral, ideais para observações e avisos importantes._
+
+### 3.1 Tabela Comparativa
+
+| Recurso | Suportado | Observação |
+| :--- | :---: | :--- |
+| Headings (H1–H4) | ✓ | Quatro níveis hierárquicos |
+| **Negrito** / _Itálico_ | ✓ | Combinações também funcionam |
+| Blocos de código | ✓ | Fonte monoespaçada com fundo cinza |
+| Links clicáveis | ✓ | Convertidos em hiperlinks reais |
+| Tabelas | ✓ | Com cabeçalho destacado |
+| Citações | ✓ | Borda lateral e itálico |
+| Linhas horizontais | ✓ | Separadores de seção |
+
+---
+
+## 4. Conclusão
+
+**Todos os elementos acima são convertidos fielmente** tanto na exportação .docx quanto na cópia para o Google Docs.`;
 
       document.getElementById('editor').value = example;
       document.getElementById('char-count').textContent = example.length.toLocaleString() + ' chars';
@@ -1110,9 +1242,7 @@ A abordagem com modelos sub-1B é viável para indexação de imagens e document
 
     // Wait for docx to load
     window.addEventListener('load', () => {
-      if (window.docx) {
-        showToast('✓ Biblioteca docx carregada.', 'success');
-      } else {
+      if (!window.docx) {
         setStatus('ERRO LIB', 'err');
         showToast('❌ Falha ao carregar docx.js — verifique a conexão.', 'error');
       }
